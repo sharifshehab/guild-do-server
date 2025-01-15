@@ -1,9 +1,9 @@
 require('dotenv').config()
 const express = require('express');
-const app = express(); 
+const app = express();
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const port = process.env.PORT || 5000; 
+const port = process.env.PORT || 5000;
 // middleware 
 app.use(cors());
 app.use(express.json());
@@ -44,21 +44,46 @@ async function run() {
             res.send(result);
         });
 
+        // get user info
+        app.get('/users', async (req, res) => {
+            const user = req.query.email;
+            const query = { email: user }
+            const result = await userCollection.findOne(query);
+            res.send(result);
+        });
 
-        // adding new post
+        // add new post
         app.post('/posts', async (req, res) => {
             const data = req.body;
             const result = await postCollection.insertOne(data);
             res.send(result);
         });
 
-
         // get all post and user specific post
         app.get('/posts', async (req, res) => {
             const email = req.query.email;
-            const query = { authorEmail: email }
-            const cursor = postCollection.find(query);    
+            const limit = parseInt(req.query.limit);
+            let query = {}
+
+            if (email) {
+                query = { authorEmail: email }
+            }
+
+            const cursor = postCollection.find(query);
+            if (limit) {
+                cursor.limit(limit);
+            }
+            cursor.sort({ createdAt: -1 });
+            
             const result = await cursor.toArray();
+            res.send(result);
+        });
+
+        // get single post
+        app.get('/posts/:id', async (req, res) => {
+            const postId = req.params.id;
+            const query = { _id: new ObjectId(postId) }
+            const result = await postCollection.findOne(query);
             res.send(result);
         });
 
@@ -77,7 +102,7 @@ async function run() {
             const posts = await postCollection.countDocuments(query);
             res.send({ posts });
         });
-        
+
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
