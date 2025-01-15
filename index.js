@@ -40,7 +40,9 @@ async function run() {
 
         // get document count
         app.get('/post-count', async (req, res) => {
-            const posts = await postCollection.estimatedDocumentCount();
+            const user = req.query.user;
+            const query = { authorEmail: user }
+            const posts = await postCollection.countDocuments(query);
             res.send({ posts });
         });
         
