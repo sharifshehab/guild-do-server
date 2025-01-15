@@ -87,6 +87,19 @@ async function run() {
             res.send(result);
         });
 
+        // vote
+        app.patch('/posts/:id', async (req, res) => {
+            const postId = req.params.id;
+            const email = req.body;
+            const filter = { _id: new ObjectId(postId), votedBy: { $ne: email } }
+            const updateState = {
+                $inc: { UpVote: 1 },
+                $push: { votedBy: email }
+            }
+            const result = await postCollection.updateOne(filter, updateState);
+            res.send(result);
+        });
+
         // delete post
         app.delete('/posts/:id', async (req, res) => {
             const postId = req.params.id;
