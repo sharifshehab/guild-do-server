@@ -2,7 +2,7 @@ require('dotenv').config()
 const express = require('express');
 const app = express(); 
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000; 
 // middleware 
 app.use(cors());
@@ -31,10 +31,42 @@ async function run() {
         const userCollection = database.collection("users");
         const postCollection = database.collection("posts");
 
+        //  Save User info
+        app.post('/users', async (req, res) => {
+            const user = req.body;
+            const query = { email: user.email }
+            const existingUser = await userCollection.findOne(query);
+            if (existingUser) {
+                return res.send({ message: 'user already exists', insertedId: null })
+            }
+
+            const result = await userCollection.insertOne(user);
+            res.send(result);
+        });
+
+
         // adding new post
         app.post('/posts', async (req, res) => {
             const data = req.body;
             const result = await postCollection.insertOne(data);
+            res.send(result);
+        });
+
+
+        // get all post and user specific post
+        app.get('/posts', async (req, res) => {
+            const email = req.query.email;
+            const query = { authorEmail: email }
+            const cursor = postCollection.find(query);    
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+
+        // delete post
+        app.delete('/posts/:id', async (req, res) => {
+            const postId = req.params.id;
+            const query = { _id: new ObjectId(postId) }
+            const result = await postCollection.deleteOne(query);
             res.send(result);
         });
 
