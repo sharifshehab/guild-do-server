@@ -37,6 +37,12 @@ async function run() {
             const result = await postCollection.insertOne(data);
             res.send(result);
         });
+
+        // get document count
+        app.get('/post-count', async (req, res) => {
+            const posts = await postCollection.estimatedDocumentCount();
+            res.send({ posts });
+        });
         
     } finally {
         // Ensures that the client will close when you finish/error
