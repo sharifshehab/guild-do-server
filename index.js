@@ -30,6 +30,7 @@ async function run() {
         const database = client.db("guildDo");
         const userCollection = database.collection("users");
         const postCollection = database.collection("posts");
+        const commentCollection = database.collection("comments");
 
         //  Save User info
         app.post('/users', async (req, res) => {
@@ -84,6 +85,13 @@ async function run() {
             const postId = req.params.id;
             const query = { _id: new ObjectId(postId) }
             const result = await postCollection.findOne(query);
+            res.send(result);
+        });
+
+        // add comment
+        app.post('/comments', async (req, res) => {
+            const data = req.body;
+            const result = await commentCollection.insertOne(data);
             res.send(result);
         });
 
@@ -144,19 +152,6 @@ async function run() {
             res.send(result);
         });
         
-
-        // down-vote
-        // app.patch('/posts/:id', async (req, res) => {
-        //     const postId = req.params.id;
-        //     const email = req.body;
-        //     const filter = { _id: new ObjectId(postId), votedBy: { $ne: email } }
-        //     const updateState = {
-        //         $inc: { DownVote: 1 },
-        //         $push: { votedBy: email }
-        //     }
-        //     const result = await postCollection.updateOne(filter, updateState);
-        //     res.send(result);
-        // });
 
         // delete post
         app.delete('/posts/:id', async (req, res) => {
