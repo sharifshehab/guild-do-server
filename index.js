@@ -117,25 +117,63 @@ async function run() {
             res.send(result);
         });
 
-        // get all post and user specific post
+        // get all post with pagination and user specific post
         app.get('/posts', async (req, res) => {
             const email = req.query.email;
             const limit = parseInt(req.query.limit);
+            const page = parseInt(req.query.page);
+            const size = parseInt(req.query.size);
+
             let query = {}
 
             if (email) {
                 query = { authorEmail: email }
             }
 
-            const cursor = postCollection.find(query);
+            const cursor = postCollection.find(query).sort({ createdAt: -1 });
             if (limit) {
                 cursor.limit(limit);
+            } else {
+                cursor.skip(page * size).limit(size);
             }
-            cursor.sort({ createdAt: -1 });
             
             const result = await cursor.toArray();
             res.send(result);
         });
+
+        // app.get('/posts', async (req, res) => {
+        //     const email = req.query.email;
+        //     const limit = parseInt(req.query.limit);
+        //     let query = {}
+
+        //     if (email) {
+        //         query = { authorEmail: email }
+        //     }
+
+        //     const cursor = postCollection.find(query);
+        //     if (limit) {
+        //         cursor.limit(limit);
+        //     }
+        //     cursor.sort({ createdAt: -1 });
+            
+        //     const result = await cursor.toArray();
+        //     res.send(result);
+        // });
+
+        /* Pagination */
+        // app.get('/post', async (req, res) => {
+        //     const page = parseInt(req.query.page);   
+        //     const size = parseInt(req.query.size);  
+        //     const result = await postCollection.find().skip(page * size).limit(size).toArray();
+        //     res.send(result);
+        // });
+
+        // post count for pagination
+        app.get('/postsCount', async (req, res) => {
+            const count = await postCollection.estimatedDocumentCount(); 
+            res.send({ count })
+        })
+
 
         // get single post
         app.get('/posts/:id', async (req, res) => {
@@ -151,6 +189,19 @@ async function run() {
             const result = await commentCollection.insertOne(data);
             res.send(result);
         });
+
+        // get all comments and post specific comments
+        app.get('/comments', async (req, res) => {
+            const title = req.query.title;
+            let query = {}
+            if (title) {
+                query = { postTitle: title }
+            }
+            const cursor = commentCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+
 
         // up-vote and down-vote
         app.patch('/posts/:id', verifyToken, async (req, res) => {
