@@ -2,11 +2,21 @@ require('dotenv').config()
 const express = require('express');
 const app = express();
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
+
 // middleware 
-app.use(cors());
+app.use(cors(
+    {
+        origin: ['http://localhost:5173'],
+        credentials: true 
+    }
+));
 app.use(express.json());
+app.use(cookieParser());
+
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.rdxg6.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -31,6 +41,53 @@ async function run() {
         const userCollection = database.collection("users");
         const postCollection = database.collection("posts");
         const commentCollection = database.collection("comments");
+
+        // JWT token
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1d' });
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: false,
+                sameSite: 'strict'
+            }).send({ success: true });
+        });
+
+        // Delete token
+        app.post('/logout', async (req, res) => {
+            res.clearCookie('token', { maxAge: 0 }).send({ success: true });
+        });
+
+        // custom middleware
+        const verifyToken = async (req, res, next) => {
+            const token = req?.cookies?.token;
+            if (!token) {
+                return res.status(401).send({ message: 'not authorized' })
+            }
+
+            jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+                if (err) {
+                    return res.status(401).send({ message: 'unauthorized' })
+                }
+                req.user = decoded; 
+                next();
+            });
+        }
+
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email; /* token user email */
+            const query = { email: email }; /* check is this email exists  */
+            const user = await userCollection.findOne(query); /* check is this email exists  */
+            const isAdmin = user?.role === 'admin'; /* check is this email user's "roll" is admin  */
+
+            /* if not admin, return them  */
+            if (!isAdmin) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            /* if admin, go to next */
+            next();
+        }
+
 
         //  Save User info
         app.post('/users', async (req, res) => {
@@ -89,14 +146,14 @@ async function run() {
         });
 
         // add comment
-        app.post('/comments', async (req, res) => {
+        app.post('/comments', verifyToken, async (req, res) => {
             const data = req.body;
             const result = await commentCollection.insertOne(data);
             res.send(result);
         });
 
         // up-vote and down-vote
-        app.patch('/posts/:id', async (req, res) => {
+        app.patch('/posts/:id', verifyToken, async (req, res) => {
             const postId = req.params.id;
             const { email, voteType } = req.body;
 
