@@ -87,18 +87,76 @@ async function run() {
             res.send(result);
         });
 
-        // vote
+        // up-vote and down-vote
         app.patch('/posts/:id', async (req, res) => {
             const postId = req.params.id;
-            const email = req.body;
-            const filter = { _id: new ObjectId(postId), votedBy: { $ne: email } }
-            const updateState = {
-                $inc: { UpVote: 1 },
-                $push: { votedBy: email }
+            const { email, voteType } = req.body;
+
+            const query = { _id: new ObjectId(postId) }
+            const post = await postCollection.findOne(query);
+
+            const alreadyUpVoted = post.votedBy?.upVotes?.includes(email);
+            const alreadyDownVoted = post.votedBy?.downVotes?.includes(email);
+
+            let updateState = {};
+            if (voteType === 'upvote') {
+
+                if (alreadyUpVoted) {
+                    res.send({ message: "Already up voted" });
+                    return;
+                }
+
+                if (alreadyDownVoted) {
+                    updateState = {
+                        $inc: { DownVote: -1, UpVote: 1 },
+                        $pull: { 'votedBy.downVotes': email },
+                        $push: { 'votedBy.upVotes': email }
+                    }
+                } else {
+                    updateState = {
+                        $inc: { UpVote: 1 },
+                        $push: { 'votedBy.upVotes': email }
+                    }
+                }
+
+            } else if (voteType === 'downvote') {
+
+                if (alreadyDownVoted) {
+                    res.send({ message: "Already down voted" });
+                    return;
+                }
+
+
+                if (alreadyUpVoted) {
+                    updateState = {
+                        $inc: { UpVote: -1, DownVote: 1 },
+                        $pull: { 'votedBy.upVotes': email },
+                        $push: { 'votedBy.downVotes': email }
+                    }
+                } else {
+                    updateState = {
+                        $inc: { DownVote: 1 },
+                        $push: { 'votedBy.downVotes': email }
+                    }
+                }
             }
-            const result = await postCollection.updateOne(filter, updateState);
+            const result = await postCollection.updateOne(query, updateState);
             res.send(result);
         });
+        
+
+        // down-vote
+        // app.patch('/posts/:id', async (req, res) => {
+        //     const postId = req.params.id;
+        //     const email = req.body;
+        //     const filter = { _id: new ObjectId(postId), votedBy: { $ne: email } }
+        //     const updateState = {
+        //         $inc: { DownVote: 1 },
+        //         $push: { votedBy: email }
+        //     }
+        //     const result = await postCollection.updateOne(filter, updateState);
+        //     res.send(result);
+        // });
 
         // delete post
         app.delete('/posts/:id', async (req, res) => {
