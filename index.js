@@ -104,11 +104,12 @@ async function run() {
         // get all user and specific user info
         app.get('/users', verifyToken, async (req, res) => {
             const user = req.query.email;
-            let query = {}
+            let result;
             if (user) {
-                query = { email: user }
+                result = await userCollection.findOne({ email: user });
+            } else {
+                result = await userCollection.find().toArray();
             }
-            const result = await userCollection.find(query).toArray();
             res.send(result);
         });
 
@@ -154,7 +155,7 @@ async function run() {
         });
 
         // get announcements
-        app.get('/announcements', verifyToken, async (req, res) => {
+        app.get('/announcements', async (req, res) => {
             const result = await announcementCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(result);
         });
@@ -169,6 +170,7 @@ async function run() {
         // get all post with pagination and user specific post
         app.get('/posts', async (req, res) => {
             const email = req.query.email;
+            const searchValue = req.query.search;
             const limit = parseInt(req.query.limit);
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
@@ -179,6 +181,10 @@ async function run() {
                 query = { authorEmail: email }
             }
 
+            if (typeof searchValue === 'string' && searchValue.trim() !== '') {
+                    query.postTag= { $regex: searchValue, $options: "i" }
+            }
+            
             const cursor = postCollection.find(query).sort({ createdAt: -1 });
             if (limit) {
                 cursor.limit(limit);
@@ -189,6 +195,31 @@ async function run() {
             const result = await cursor.toArray();
             res.send(result);
         });
+
+        // app.get('/posts', async (req, res) => {
+        //     const email = req.query.email;
+        //     const limit = parseInt(req.query.limit);
+        //     const page = parseInt(req.query.page);
+        //     const size = parseInt(req.query.size);
+
+        //     let query = {}
+
+        //     if (email) {
+        //         query = { authorEmail: email }
+        //     }
+
+            
+        //     const cursor = postCollection.find(query).sort({ createdAt: -1 });
+        //     if (limit) {
+        //         cursor.limit(limit);
+        //     } else {
+        //         cursor.skip(page * size).limit(size);
+        //     }
+
+        //     const result = await cursor.toArray();
+        //     res.send(result);
+        // });
+
 
         // app.get('/posts', async (req, res) => {
         //     const email = req.query.email;
@@ -296,6 +327,18 @@ async function run() {
                 }
             ]).toArray();
             res.send(result);
+        });
+
+        // get single report
+        app.get('/report/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const query = { commentId: id }
+            const result = await reportCollection.findOne(query);
+            if (result) {
+                res.send({ match: true });
+            } else {
+                res.send({ match: false });
+            }
         });
 
         // delete report
