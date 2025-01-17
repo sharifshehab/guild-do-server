@@ -76,16 +76,13 @@ async function run() {
         }
 
         const verifyAdmin = async (req, res, next) => {
-            const email = req.decoded.email; /* token user email */
-            const query = { email: email }; /* check is this email exists  */
-            const user = await userCollection.findOne(query); /* check is this email exists  */
-            const isAdmin = user?.role === 'admin'; /* check is this email user's "roll" is admin  */
-
-            /* if not admin, return them  */
+            const email = req.user.email;
+            const query = { email: email }; 
+            const user = await userCollection.findOne(query); 
+            const isAdmin = user?.role === 'Admin'; 
             if (!isAdmin) {
                 return res.status(403).send({ message: 'forbidden access' });
             }
-            /* if admin, go to next */
             next();
         }
 
@@ -111,6 +108,19 @@ async function run() {
                 query = { email: user }
             }
             const result = await userCollection.find(query).toArray();
+            res.send(result);
+        });
+
+        // make a user to Admin
+        app.patch('/users/admin/:id', verifyToken, async (req, res) => {
+            const userId = req.params.id;
+            const query = { _id: new ObjectId(userId) }
+            const updatedDoc = {
+                $set: {
+                    role: 'Admin'
+                }
+            };
+            const result = await userCollection.updateOne(query, updatedDoc);
             res.send(result);
         });
 
