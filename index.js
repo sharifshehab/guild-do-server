@@ -39,6 +39,7 @@ async function run() {
 
         const database = client.db("guildDo");
         const userCollection = database.collection("users");
+        const announcementCollection = database.collection("announcements");
         const postCollection = database.collection("posts");
         const commentCollection = database.collection("comments");
 
@@ -110,6 +111,20 @@ async function run() {
                 query = { email: user }
             }
             const result = await userCollection.find(query).toArray();
+            res.send(result);
+        });
+
+
+        // add new announcement
+        app.post('/announcements', async (req, res) => {
+            const data = req.body;
+            const result = await announcementCollection.insertOne(data);
+            res.send(result);
+        });
+
+        // get announcements
+        app.get('/announcements', async (req, res) => {
+            const result = await announcementCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(result);
         });
 
