@@ -11,7 +11,7 @@ const port = process.env.PORT || 5000;
 app.use(cors(
     {
         origin: ['http://localhost:5173'],
-        credentials: true 
+        credentials: true
     }
 ));
 app.use(express.json());
@@ -42,6 +42,7 @@ async function run() {
         const announcementCollection = database.collection("announcements");
         const postCollection = database.collection("posts");
         const commentCollection = database.collection("comments");
+        const reportCollection = database.collection("reports");
 
         // JWT token
         app.post('/jwt', async (req, res) => {
@@ -70,16 +71,16 @@ async function run() {
                 if (err) {
                     return res.status(401).send({ message: 'unauthorized' })
                 }
-                req.user = decoded; 
+                req.user = decoded;
                 next();
             });
         }
 
         const verifyAdmin = async (req, res, next) => {
             const email = req.user.email;
-            const query = { email: email }; 
-            const user = await userCollection.findOne(query); 
-            const isAdmin = user?.role === 'Admin'; 
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            const isAdmin = user?.role === 'Admin';
             if (!isAdmin) {
                 return res.status(403).send({ message: 'forbidden access' });
             }
@@ -100,14 +101,22 @@ async function run() {
             res.send(result);
         });
 
-        // get user info
-        app.get('/users', async (req, res) => {
+        // get all user and specific user info
+        app.get('/users', verifyToken, async (req, res) => {
             const user = req.query.email;
             let query = {}
             if (user) {
                 query = { email: user }
             }
             const result = await userCollection.find(query).toArray();
+            res.send(result);
+        });
+
+        // delete user
+        app.delete('/users/:email', async (req, res) => {
+            const userEmail = req.params.email;
+            const query = { email: userEmail }
+            const result = await userCollection.deleteOne(query);
             res.send(result);
         });
 
@@ -124,22 +133,34 @@ async function run() {
             res.send(result);
         });
 
+        // Warn user
+        app.patch('/users/warn/:email', verifyToken, async (req, res) => {
+            const userEmail = req.params.email;
+            const query = { email: userEmail }
+            const updatedDoc = {
+                $set: {
+                    warn: 'Warning'
+                }
+            };
+            const result = await userCollection.updateOne(query, updatedDoc);
+            res.send(result);
+        });
 
         // add new announcement
-        app.post('/announcements', async (req, res) => {
+        app.post('/announcements', verifyToken, async (req, res) => {
             const data = req.body;
             const result = await announcementCollection.insertOne(data);
             res.send(result);
         });
 
         // get announcements
-        app.get('/announcements', async (req, res) => {
+        app.get('/announcements', verifyToken, async (req, res) => {
             const result = await announcementCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(result);
         });
 
         // add new post
-        app.post('/posts', async (req, res) => {
+        app.post('/posts', verifyToken, async (req, res) => {
             const data = req.body;
             const result = await postCollection.insertOne(data);
             res.send(result);
@@ -164,7 +185,7 @@ async function run() {
             } else {
                 cursor.skip(page * size).limit(size);
             }
-            
+
             const result = await cursor.toArray();
             res.send(result);
         });
@@ -183,7 +204,7 @@ async function run() {
         //         cursor.limit(limit);
         //     }
         //     cursor.sort({ createdAt: -1 });
-            
+
         //     const result = await cursor.toArray();
         //     res.send(result);
         // });
@@ -198,10 +219,9 @@ async function run() {
 
         // post count for pagination
         app.get('/postsCount', async (req, res) => {
-            const count = await postCollection.estimatedDocumentCount(); 
+            const count = await postCollection.estimatedDocumentCount();
             res.send({ count })
         })
-
 
         // get single post
         app.get('/posts/:id', async (req, res) => {
@@ -227,6 +247,62 @@ async function run() {
             }
             const cursor = commentCollection.find(query);
             const result = await cursor.toArray();
+            res.send(result);
+        });
+
+        // delete comment
+        app.delete('/comments/:id', async (req, res) => {
+            const commentId = req.params.id;
+            const query = { _id: new ObjectId(commentId) }
+            const result = await commentCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        // add report
+        app.post('/reports', verifyToken, async (req, res) => {
+            const data = req.body;
+            const result = await reportCollection.insertOne(data);
+            res.send(result);
+        });
+
+        // get all report
+        app.get('/reports', verifyToken, async (req, res) => {
+            const result = await reportCollection.aggregate([
+                {
+                    $addFields: {
+                        commentIdObject: { $toObjectId: "$commentId" }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'comments',
+                        localField: 'commentIdObject',
+                        foreignField: '_id',
+                        as: 'comment'
+                    }
+                },
+                {
+                    $unwind: "$comment"
+                },
+                {
+                    $project: {
+                        _id: 1,
+                        report: 1,
+                        commentId: "$comment._id",
+                        comment: "$comment.comment",
+                        commenterEmail: "$comment.email",
+                        postId: "$comment.postId"
+                    }
+                }
+            ]).toArray();
+            res.send(result);
+        });
+
+        // delete report
+        app.delete('/reports/:id', async (req, res) => {
+            const reportId = req.params.id;
+            const query = { _id: new ObjectId(reportId) }
+            const result = await reportCollection.deleteOne(query);
             res.send(result);
         });
 
@@ -287,7 +363,7 @@ async function run() {
             const result = await postCollection.updateOne(query, updateState);
             res.send(result);
         });
-        
+
 
         // delete post
         app.delete('/posts/:id', async (req, res) => {
