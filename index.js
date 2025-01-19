@@ -5,6 +5,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY); 
 const port = process.env.PORT || 5000;
 
 // middleware 
@@ -43,6 +44,7 @@ async function run() {
         const postCollection = database.collection("posts");
         const commentCollection = database.collection("comments");
         const reportCollection = database.collection("reports");
+        const paymentCollection = database.collection("payments");
 
         // JWT token
         app.post('/jwt', async (req, res) => {
@@ -422,6 +424,51 @@ async function run() {
             const query = { authorEmail: user }
             const posts = await postCollection.countDocuments(query);
             res.send({ posts });
+        });
+
+        // stripe payments
+        app.post("/create-payment-intent", async (req, res) => {
+            const { price } = req.body;
+            const amount = parseInt(price * 100);
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: "usd",
+                payment_method_types: [
+                    "card",
+                ],
+            });
+
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        });
+
+        // save payment data
+        app.post('/payments', verifyToken, async (req, res) => {
+            const data = req.body;
+            const userEmail = data.email;
+            const query = { email: userEmail }
+            const updatedDoc = {
+                $set: {
+                    badge: 'Gold'
+                }
+            };
+            const update = await userCollection.updateOne(query, updatedDoc);
+            const result = await paymentCollection.insertOne(data);
+            res.send(result);
+        });
+
+
+        // get all payment data and specific user payment data 
+        app.get('/payments', verifyToken, async (req, res) => {
+            const userEmail = req.query.email;
+            let result;
+            if (userEmail) {
+                result = await paymentCollection.findOne({ email: userEmail });
+            } else {
+                result = await paymentCollection.find().toArray();
+            }
+            res.send(result);
         });
 
     } finally {
