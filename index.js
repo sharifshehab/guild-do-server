@@ -44,6 +44,7 @@ async function run() {
         const postCollection = database.collection("posts");
         const commentCollection = database.collection("comments");
         const reportCollection = database.collection("reports");
+        const tagCollection = database.collection("tags");
         const paymentCollection = database.collection("payments");
 
         // JWT token
@@ -409,7 +410,6 @@ async function run() {
             res.send(result);
         });
 
-
         // delete post
         app.delete('/posts/:id', async (req, res) => {
             const postId = req.params.id;
@@ -419,11 +419,11 @@ async function run() {
         });
 
         // get document count
-        app.get('/post-count', async (req, res) => {
-            const user = req.query.user;
-            const query = { authorEmail: user }
-            const posts = await postCollection.countDocuments(query);
-            res.send({ posts });
+        app.get('/document-count', verifyToken, async (req, res) => {
+            const posts = await postCollection.estimatedDocumentCount();
+            const comments = await commentCollection.estimatedDocumentCount();
+            const users = await userCollection.estimatedDocumentCount();
+            res.send({ posts, comments, users });
         });
 
         // stripe payments
@@ -441,6 +441,20 @@ async function run() {
             res.send({
                 clientSecret: paymentIntent.client_secret,
             });
+        });
+
+        // add new tag
+        app.post('/tags', verifyToken, async (req, res) => {
+            const data = req.body;
+            const result = await tagCollection.insertOne(data);
+            res.send(result);
+        });
+
+        // get all tags
+        app.get('/tags', async (req, res) => {
+            const cursor = tagCollection.find();
+            const result = await cursor.toArray();
+            res.send(result);
         });
 
         // save payment data
