@@ -5,13 +5,17 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY); 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 5000;
 
 // middleware 
 app.use(cors(
     {
-        origin: ['http://localhost:5173'],
+        origin: [
+            'http://localhost:5173',
+            'https://guild-do.web.app',
+            'https://guild-do.firebaseapp.com'
+        ],
         credentials: true
     }
 ));
@@ -53,14 +57,14 @@ async function run() {
             const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1d' });
             res.cookie('token', token, {
                 httpOnly: true,
-                secure: false,
-                sameSite: 'strict'
+                secure: process.env.NODE_ENV === 'production' ? true : false,
+                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
             }).send({ success: true });
         });
 
         // Delete token
         app.post('/logout', async (req, res) => {
-            res.clearCookie('token', { maxAge: 0 }).send({ success: true });
+            res.clearCookie('token', { maxAge: 0, secure: process.env.NODE_ENV === 'production' ? true : false, sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict' }).send({ success: true });
         });
 
         // custom middleware
@@ -210,27 +214,73 @@ async function run() {
             const postLimit = parseInt(req.query.limit);
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
+            const SortByPopularity = req.query.popularity === 'true';
 
             let query = {}
-
             if (email) {
                 query = { authorEmail: email }
             }
 
             if (typeof searchValue === 'string' && searchValue.trim() !== '') {
-                    query.postTag= { $regex: searchValue, $options: "i" }
-            }
-            
-            const cursor = postCollection.find(query).sort({ createdAt: -1 });
-            if (postLimit) {
-                cursor.limit(postLimit);
-            } else {
-                cursor.skip(page * size).limit(size);
+                query.postTag = { $regex: searchValue, $options: "i" }
             }
 
-            const result = await cursor.toArray();
+            let result;
+
+            if (SortByPopularity) {
+                result = await postCollection.aggregate([
+                    {
+                        $addFields: {
+                            voteDifference: { $subtract: ["$UpVote", "$DownVote"] }
+                        }
+                    },
+                    {
+                        $sort: { voteDifference: -1 }
+                    },
+                    { $skip: page * size },
+                    { $limit: size }
+                ]).toArray();
+            } else {
+                const cursor = postCollection.find(query).sort({ createdAt: -1 });
+                if (postLimit) {
+                    cursor.limit(postLimit);
+                } else {
+                    cursor.skip(page * size).limit(size);
+                }
+                result = await cursor.toArray();
+            }
+
             res.send(result);
         });
+
+        // working correctly before sort
+        // app.get('/posts', async (req, res) => {
+        //     const email = req.query.email;
+        //     const searchValue = req.query.search;
+        //     const postLimit = parseInt(req.query.limit);
+        //     const page = parseInt(req.query.page);
+        //     const size = parseInt(req.query.size);
+
+        //     let query = {}
+        //     if (email) {
+        //         query = { authorEmail: email }
+        //     }
+
+        //     if (typeof searchValue === 'string' && searchValue.trim() !== '') {
+        //         query.postTag = { $regex: searchValue, $options: "i" }
+        //     }
+
+        //     const cursor = postCollection.find(query).sort({ createdAt: -1 });
+        //     if (postLimit) {
+        //         cursor.limit(postLimit);
+        //     } else {
+        //         cursor.skip(page * size).limit(size);
+        //     }
+
+        //     const result = await cursor.toArray();
+        //     res.send(result);
+        // });
+
 
         // app.get('/posts', async (req, res) => {
         //     const email = req.query.email;
@@ -244,7 +294,7 @@ async function run() {
         //         query = { authorEmail: email }
         //     }
 
-            
+
         //     const cursor = postCollection.find(query).sort({ createdAt: -1 });
         //     if (limit) {
         //         cursor.limit(limit);
