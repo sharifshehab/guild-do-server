@@ -79,17 +79,6 @@ async function run() {
             });
         }
 
-        const verifyAdmin = async (req, res, next) => {
-            const email = req.user.email;
-            const query = { email: email };
-            const user = await userCollection.findOne(query);
-            const isAdmin = user?.role === 'Admin';
-            if (!isAdmin) {
-                return res.status(403).send({ message: 'forbidden access' });
-            }
-            next();
-        }
-
 
         //  Save User info
         app.post('/users', async (req, res) => {
@@ -107,14 +96,42 @@ async function run() {
         // get all user and specific user info
         app.get('/users', verifyToken, async (req, res) => {
             const user = req.query.email;
+            const page = parseInt(req.query.page);
+            const size = parseInt(req.query.size);
+
             let result;
             if (user) {
                 result = await userCollection.findOne({ email: user });
             } else {
-                result = await userCollection.find().toArray();
+                result = await userCollection.find().skip(page * size).limit(size).toArray();
             }
             res.send(result);
         });
+
+        // user count for pagination
+        app.get('/userCounts', verifyToken, async (req, res) => {
+            const count = await userCollection.estimatedDocumentCount();
+            res.send({ count })
+        })
+
+        /* ------- */
+        // app.get('/posts', async (req, res) => {
+        //     const email = req.query.email;
+        //     const page = parseInt(req.query.page);
+        //     const size = parseInt(req.query.size);
+
+
+        //     const cursor = postCollection.find(query).sort({ createdAt: -1 });
+        //     if (postLimit) {
+        //         cursor.limit(postLimit);
+        //     } else {
+        //         cursor.skip(page * size).limit(size);
+        //     }
+
+        //     const result = await cursor.toArray();
+        //     res.send(result);
+        // });
+        /* ------- */
 
         // delete user
         app.delete('/users/:email', async (req, res) => {
@@ -135,6 +152,22 @@ async function run() {
             };
             const result = await userCollection.updateOne(query, updatedDoc);
             res.send(result);
+        });
+
+        // To check if a user is "admin or not"
+        app.get('/users/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            if (email !== req.user.email) {
+                return res.status(401).send({ message: 'unauthorized' })
+            }
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            let admin = false;
+
+            if (user) {
+                admin = user?.role === 'Admin';
+            }
+            res.send({ admin });
         });
 
         // Warn user
@@ -174,7 +207,7 @@ async function run() {
         app.get('/posts', async (req, res) => {
             const email = req.query.email;
             const searchValue = req.query.search;
-            const limit = parseInt(req.query.limit);
+            const postLimit = parseInt(req.query.limit);
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
 
@@ -189,8 +222,8 @@ async function run() {
             }
             
             const cursor = postCollection.find(query).sort({ createdAt: -1 });
-            if (limit) {
-                cursor.limit(limit);
+            if (postLimit) {
+                cursor.limit(postLimit);
             } else {
                 cursor.skip(page * size).limit(size);
             }
@@ -257,6 +290,14 @@ async function run() {
             res.send({ count })
         })
 
+        // specific users post count for pagination
+        app.get('/postCounts/:email', verifyToken, async (req, res) => {
+            const userEmail = req.params.email;
+            const query = { authorEmail: userEmail }
+            const count = await postCollection.countDocuments(query);
+            res.send({ count })
+        })
+
         // get single post
         app.get('/posts/:id', async (req, res) => {
             const postId = req.params.id;
@@ -301,6 +342,12 @@ async function run() {
 
         // get all report
         app.get('/reports', verifyToken, async (req, res) => {
+            let page = parseInt(req.query.page);
+            let size = parseInt(req.query.size);
+
+            page = isNaN(page) ? 0 : page;
+            size = isNaN(size) ? 10 : size;
+
             const result = await reportCollection.aggregate([
                 {
                     $addFields: {
@@ -328,9 +375,31 @@ async function run() {
                         postId: "$comment.postId"
                     }
                 }
-            ]).toArray();
+            ]).skip(page * size).limit(size).toArray();
             res.send(result);
         });
+
+        /* 
+            app.get('/users', verifyToken, async (req, res) => {
+          
+            const page = parseInt(req.query.page);
+            const size = parseInt(req.query.size);
+
+            let result;
+            if (user) {
+                result = await userCollection.findOne({ email: user });
+            } else {
+                result = await userCollection.find().skip(page * size).limit(size).toArray();
+            }
+            res.send(result);
+        });
+        */
+
+        // report count for pagination
+        app.get('/reportCounts', verifyToken, async (req, res) => {
+            const count = await reportCollection.estimatedDocumentCount();
+            res.send({ count })
+        })
 
         // get single report
         app.get('/report/:id', verifyToken, async (req, res) => {
