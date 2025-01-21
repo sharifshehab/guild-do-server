@@ -34,6 +34,22 @@ const client = new MongoClient(uri, {
     }
 });
 
+// custom middleware
+const verifyToken = async (req, res, next) => {
+    const token = req?.cookies?.token;
+    if (!token) {
+        return res.status(401).send({ message: 'not authorized' })
+    }
+
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: 'unauthorized' })
+        }
+        req.user = decoded;
+        next();
+    });
+}
+
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
@@ -64,25 +80,8 @@ async function run() {
 
         // Delete token
         app.post('/logout', async (req, res) => {
-            res.clearCookie('token', { maxAge: 0, secure: process.env.NODE_ENV === 'production' ? true : false, sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict' }).send({ success: true });
+            res.clearCookie('token', { maxAge: 0 }).send({ success: true });
         });
-
-        // custom middleware
-        const verifyToken = async (req, res, next) => {
-            const token = req?.cookies?.token;
-            if (!token) {
-                return res.status(401).send({ message: 'not authorized' })
-            }
-
-            jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-                if (err) {
-                    return res.status(401).send({ message: 'unauthorized' })
-                }
-                req.user = decoded;
-                next();
-            });
-        }
-
 
         //  Save User info
         app.post('/users', async (req, res) => {
@@ -98,8 +97,8 @@ async function run() {
         });
 
         // get all user and specific user info
-        app.get('/users', verifyToken, async (req, res) => {
-            // const currentUser = req.params.current_email;
+        app.get('/users/:currentEmail', verifyToken, async (req, res) => {
+            const currentUser = req.params.currentEmail;
             const user = req.query.email;
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
@@ -108,7 +107,10 @@ async function run() {
             if (user) {
                 result = await userCollection.findOne({ email: user });
             } else {
-                result = await userCollection.find().skip(page * size).limit(size).toArray();
+                result = await userCollection.find({ email: { $ne: currentUser } })
+                    .skip(page * size)
+                    .limit(size)
+                    .toArray();
             }
             res.send(result);
         });
@@ -160,16 +162,17 @@ async function run() {
         });
 
         // To check if a user is "admin or not"
-        app.get('/users/admin/:email', verifyToken, async (req, res) => {
-            const email = req.params.email;
-            if (email !== req.user.email) {
-                return res.status(401).send({ message: 'unauthorized' })
+        app.get('/users/admin/:email', verifyToken,async (req, res) => {
+            const userEmail = req.params.email;
+
+            if (userEmail !== req.user.email) {
+                return res.status(404).send({ message: 'Bed Request' })
             }
-            const query = { email: email };
+            const query = { email: userEmail };
             const user = await userCollection.findOne(query);
             let admin = false;
             if (user) {
-                admin = user?.role === 'Admin';
+                admin = user.role === 'Admin';
             }
             res.send({ admin });
         });
