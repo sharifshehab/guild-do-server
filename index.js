@@ -121,25 +121,6 @@ async function run() {
             res.send({ count })
         })
 
-        /* ------- */
-        // app.get('/posts', async (req, res) => {
-        //     const email = req.query.email;
-        //     const page = parseInt(req.query.page);
-        //     const size = parseInt(req.query.size);
-
-
-        //     const cursor = postCollection.find(query).sort({ createdAt: -1 });
-        //     if (postLimit) {
-        //         cursor.limit(postLimit);
-        //     } else {
-        //         cursor.skip(page * size).limit(size);
-        //     }
-
-        //     const result = await cursor.toArray();
-        //     res.send(result);
-        // });
-        /* ------- */
-
         // delete user
         app.delete('/users/:email', async (req, res) => {
             const userEmail = req.params.email;
@@ -424,22 +405,6 @@ async function run() {
             ]).skip(page * size).limit(size).toArray();
             res.send(result);
         });
-
-        /* 
-            app.get('/users', verifyToken, async (req, res) => {
-          
-            const page = parseInt(req.query.page);
-            const size = parseInt(req.query.size);
-
-            let result;
-            if (user) {
-                result = await userCollection.findOne({ email: user });
-            } else {
-                result = await userCollection.find().skip(page * size).limit(size).toArray();
-            }
-            res.send(result);
-        });
-        */
 
         // report count for pagination
         app.get('/reportCounts', verifyToken, async (req, res) => {
