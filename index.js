@@ -98,7 +98,8 @@ async function run() {
         });
 
         // get all user and specific user info
-        app.get('/users', verifyToken, async (req, res) => {
+        app.get('/users/:current_email', verifyToken, async (req, res) => {
+            const currentUser = req.params.current_email;
             const user = req.query.email;
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
@@ -107,7 +108,7 @@ async function run() {
             if (user) {
                 result = await userCollection.findOne({ email: user });
             } else {
-                result = await userCollection.find().skip(page * size).limit(size).toArray();
+                result = await userCollection.find({ email: { $ne: currentUser } }).skip(page * size).limit(size).toArray();
             }
             res.send(result);
         });
@@ -159,7 +160,7 @@ async function run() {
         });
 
         // To check if a user is "admin or not"
-        app.get('/users/:email', verifyToken, async (req, res) => {
+        app.get('/users/admin/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
             if (email !== req.user.email) {
                 return res.status(401).send({ message: 'unauthorized' })
@@ -326,13 +327,6 @@ async function run() {
         //     res.send(result);
         // });
 
-        /* Pagination */
-        // app.get('/post', async (req, res) => {
-        //     const page = parseInt(req.query.page);   
-        //     const size = parseInt(req.query.size);  
-        //     const result = await postCollection.find().skip(page * size).limit(size).toArray();
-        //     res.send(result);
-        // });
 
         // post count for pagination
         app.get('/postsCount', async (req, res) => {
