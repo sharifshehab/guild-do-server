@@ -98,8 +98,8 @@ async function run() {
         });
 
         // get all user and specific user info
-        app.get('/users/:current_email', verifyToken, async (req, res) => {
-            const currentUser = req.params.current_email;
+        app.get('/users', verifyToken, async (req, res) => {
+            // const currentUser = req.params.current_email;
             const user = req.query.email;
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
@@ -108,7 +108,7 @@ async function run() {
             if (user) {
                 result = await userCollection.findOne({ email: user });
             } else {
-                result = await userCollection.find({ email: { $ne: currentUser } }).skip(page * size).limit(size).toArray();
+                result = await userCollection.find().skip(page * size).limit(size).toArray();
             }
             res.send(result);
         });
@@ -147,7 +147,7 @@ async function run() {
         });
 
         // make a user to Admin
-        app.patch('/users/admin/:id', verifyToken, async (req, res) => {
+        app.patch('/users/:id', verifyToken, async (req, res) => {
             const userId = req.params.id;
             const query = { _id: new ObjectId(userId) }
             const updatedDoc = {
@@ -168,7 +168,6 @@ async function run() {
             const query = { email: email };
             const user = await userCollection.findOne(query);
             let admin = false;
-
             if (user) {
                 admin = user?.role === 'Admin';
             }
