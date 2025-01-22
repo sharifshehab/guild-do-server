@@ -80,7 +80,7 @@ async function run() {
 
         // Delete token
         app.post('/logout', async (req, res) => {
-            res.clearCookie('token', { maxAge: 0 }).send({ success: true });
+            res.clearCookie('token', { maxAge: 0, secure: process.env.NODE_ENV === 'production' ? true : false, sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict' }).send({ success: true });
         });
 
         //  Save User info
@@ -100,20 +100,29 @@ async function run() {
         app.get('/users/:currentEmail', verifyToken, async (req, res) => {
             const currentUser = req.params.currentEmail;
             const user = req.query.email;
-            const page = parseInt(req.query.page);
-            const size = parseInt(req.query.size);
+            const searchValue = req.query.search;
+            const page = parseInt(req.query.page) || 0;
+            const size = parseInt(req.query.size) || 0;
+
+            let query = { email: { $ne: currentUser } };
+
+            if (typeof searchValue === 'string' && searchValue.trim() !== '') {
+                    query.name= { $regex: searchValue, $options: "i" }
+            }
 
             let result;
+            
             if (user) {
                 result = await userCollection.findOne({ email: user });
             } else {
-                result = await userCollection.find({ email: { $ne: currentUser } })
+                result = await userCollection.find(query)
                     .skip(page * size)
                     .limit(size)
                     .toArray();
             }
             res.send(result);
         });
+
 
         // user count for pagination
         app.get('/userCounts', verifyToken, async (req, res) => {
@@ -130,7 +139,7 @@ async function run() {
         });
 
         // make a user to Admin
-        app.patch('/users/:id', verifyToken, async (req, res) => {
+        app.patch('/users/admin/:id', verifyToken, async (req, res) => {
             const userId = req.params.id;
             const query = { _id: new ObjectId(userId) }
             const updatedDoc = {
@@ -143,7 +152,7 @@ async function run() {
         });
 
         // To check if a user is "admin or not"
-        app.get('/users/admin/:email', verifyToken,async (req, res) => {
+        app.get('/users/admin/:email', verifyToken, async (req, res) => {
             const userEmail = req.params.email;
 
             if (userEmail !== req.user.email) {
@@ -237,79 +246,6 @@ async function run() {
             res.send(result);
         });
 
-        // working correctly before sort
-        // app.get('/posts', async (req, res) => {
-        //     const email = req.query.email;
-        //     const searchValue = req.query.search;
-        //     const postLimit = parseInt(req.query.limit);
-        //     const page = parseInt(req.query.page);
-        //     const size = parseInt(req.query.size);
-
-        //     let query = {}
-        //     if (email) {
-        //         query = { authorEmail: email }
-        //     }
-
-        //     if (typeof searchValue === 'string' && searchValue.trim() !== '') {
-        //         query.postTag = { $regex: searchValue, $options: "i" }
-        //     }
-
-        //     const cursor = postCollection.find(query).sort({ createdAt: -1 });
-        //     if (postLimit) {
-        //         cursor.limit(postLimit);
-        //     } else {
-        //         cursor.skip(page * size).limit(size);
-        //     }
-
-        //     const result = await cursor.toArray();
-        //     res.send(result);
-        // });
-
-
-        // app.get('/posts', async (req, res) => {
-        //     const email = req.query.email;
-        //     const limit = parseInt(req.query.limit);
-        //     const page = parseInt(req.query.page);
-        //     const size = parseInt(req.query.size);
-
-        //     let query = {}
-
-        //     if (email) {
-        //         query = { authorEmail: email }
-        //     }
-
-
-        //     const cursor = postCollection.find(query).sort({ createdAt: -1 });
-        //     if (limit) {
-        //         cursor.limit(limit);
-        //     } else {
-        //         cursor.skip(page * size).limit(size);
-        //     }
-
-        //     const result = await cursor.toArray();
-        //     res.send(result);
-        // });
-
-
-        // app.get('/posts', async (req, res) => {
-        //     const email = req.query.email;
-        //     const limit = parseInt(req.query.limit);
-        //     let query = {}
-
-        //     if (email) {
-        //         query = { authorEmail: email }
-        //     }
-
-        //     const cursor = postCollection.find(query);
-        //     if (limit) {
-        //         cursor.limit(limit);
-        //     }
-        //     cursor.sort({ createdAt: -1 });
-
-        //     const result = await cursor.toArray();
-        //     res.send(result);
-        // });
-
 
         // post count for pagination
         app.get('/postsCount', async (req, res) => {
@@ -342,14 +278,15 @@ async function run() {
 
         // get all comments and post specific comments
         app.get('/comments', async (req, res) => {
-            const title = req.query.title;
-            let query = {}
-            if (title) {
-                query = { postTitle: title }
+            const id = req.query.id;
+            let query = {};
+            if (id) {
+                query = { postId: id };
             }
             const cursor = commentCollection.find(query);
             const result = await cursor.toArray();
             res.send(result);
+
         });
 
         // delete comment
