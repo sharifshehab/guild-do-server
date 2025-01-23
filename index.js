@@ -73,14 +73,14 @@ async function run() {
             const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1d' });
             res.cookie('token', token, {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production' ? true : false,
+                secure: process.env.NODE_ENV === 'production',
                 sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
             }).send({ success: true });
         });
 
         // Delete token
         app.post('/logout', async (req, res) => {
-            res.clearCookie('token', { maxAge: 0, secure: process.env.NODE_ENV === 'production' ? true : false, sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict' }).send({ success: true });
+            res.clearCookie('token', { maxAge: 0, httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict' }).send({ success: true });
         });
 
         //  Save User info
@@ -156,7 +156,7 @@ async function run() {
             const userEmail = req.params.email;
 
             if (userEmail !== req.user.email) {
-                return res.status(404).send({ message: 'Bed Request' })
+                return res.status(400).send({ message: 'Bed Request' })
             }
             const query = { email: userEmail };
             const user = await userCollection.findOne(query);
