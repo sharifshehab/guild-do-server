@@ -11,5 +11,6 @@ The purpose of GuildDo is to create a dynamic online community where gamers can 
 
 ## Category: Gaming forum community 
 
-##  Live Link:
+##  Live Links:
+- **[GuildDo Server](https://guild-do-server.vercel.app)**
 - **[GuildDo](https://guild-do.web.app)**

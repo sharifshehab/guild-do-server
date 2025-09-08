@@ -68,6 +68,7 @@ async function run() {
         const tagCollection = database.collection("tags");
         const paymentCollection = database.collection("payments");
         const friendCollection = database.collection("friends");
+        const groupCollection = database.collection("groups");
 
         // JWT token
         app.post('/jwt', async (req, res) => {
@@ -496,7 +497,7 @@ async function run() {
         });
 
         
-        // Save friend requests
+        // Create friend requests
         app.post('/friend-requests', async (req, res) => {
             const request = req.body;
             const existingRequest = await friendCollection.findOne({
@@ -511,22 +512,19 @@ async function run() {
             const result = await friendCollection.insertOne(request);
             res.send(result);
         });
-        // get all friend requests and specific user friend requests
+        // get all friend requests (received requests and send requests)
         app.get('/friend-requests', async (req, res) => {
-            const userEmail = req.query.email;
+            const receivedRequests = req.query.receivedRequests;
+            const sendRequests = req.query.sendRequests;
             let result;
-            if (userEmail) {
+            if (receivedRequests) {
                 result = await friendCollection
-                        .find({ toUser: userEmail }) 
+                        .find({ toUser: receivedRequests }) 
                         .toArray();   
-                // result = await friendCollection
-                //         .find({$or: [
-                //                 { fromUser: userEmail },
-                //                 { toUser: userEmail }
-                //             ]}) 
-                //         .toArray();   
             } else {
-                result = await friendCollection.find().toArray();
+                result = await friendCollection
+                        .find({ fromUser: sendRequests }) 
+                        .toArray();   
             }
             res.send(result);
         });
@@ -534,7 +532,6 @@ async function run() {
         app.patch('/friend-requests/:id',  async (req, res) => {
             const friendRequestId = req.params.id;
             const friendRequestResponse = req.body.requestResponse;
-            console.log(friendRequestResponse);
             const query = { _id: new ObjectId(friendRequestId) }
             const updatedRequestStatus = {
                 $set: {
@@ -563,10 +560,138 @@ async function run() {
             res.send(result);
         });
         // delete friend request
-        app.delete('/friend-requests/:id', async (req, res) => {
-            const friendRequestId = req.params.id;
-            const query = { _id: new ObjectId(friendRequestId) }
-            const result = await friendCollection.deleteOne(query);
+        // app.delete('/friend-requests/:id', async (req, res) => {
+        //     const friendRequestId = req.params.id;
+        //     const query = { _id: new ObjectId(friendRequestId) }
+        //     const result = await friendCollection.deleteOne(query);
+        //     res.send(result);
+        // });
+
+
+        // Create new group
+        app.post('/groups', async (req, res) => {
+            const group = req.body;
+            const existingGroup = await groupCollection.findOne({ name: group.name });
+            if (existingGroup) {
+                return res.send({ message: 'Group name already exist', insertedId: null })
+            }
+            
+            // Insert group creator data into the document by default
+            const groupCreator = {
+                email: group.owner,
+                role: "admin",
+                joinedAt: group.createdAt
+            };
+            group.members = [groupCreator]
+
+            const result = await groupCollection.insertOne(group);
+            res.send(result);
+        });
+        // get all groups and specific owner's groups
+        app.get('/groups', async (req, res) => {
+            const groupOwner = req.query.groupOwner;
+            let result;
+            if (groupOwner) {
+                result = await groupCollection
+                        .find({ owner: groupOwner }) 
+                        .toArray();   
+            } else {
+                result = await groupCollection
+                        .find() 
+                        .toArray();  
+            }
+            
+            res.send(result);
+        });
+        // send group join request
+        app.patch('/groups/:id',  async (req, res) => {
+            const groupId = req.params.id;
+            const joinRequest = req.body.email;
+            const query = { _id: new ObjectId(groupId) }
+
+            const group = await groupCollection.findOne(query); 
+            if (!group) {
+                return res.status(404).send({message: "Group not found!"})
+            }
+            const alreadyRequested = group.requests?.some(request => request.email === joinRequest); 
+            const alreadyMember = group.members?.some(member => member.email === joinRequest); 
+            if (alreadyRequested) {
+                return res.status(404).send({ message: "Join request already sent" });
+            }
+            if (alreadyMember) {
+                return res.status(404).send({ message: "You are already a member" });
+            }
+
+            // Puss "join Request Email" in to the group "requests array"
+            const updatedRequest = {
+                $push: {
+                    requests: joinRequest
+                }
+            };
+            const result = await groupCollection.updateOne(query, updatedRequest);
+            res.send(result);
+        });
+        // get all the join "requests" and the "members" of a group
+        app.get('/groups/request/:id', async (req, res) => {
+            const groupId = req.params.id;
+            const members = req.query.members;
+
+            const query = { _id: new ObjectId(groupId) };
+            let options
+            if (members) {
+                // Get all the group members
+                options = { projection: {members: 1 , _id:0} };
+            } else {
+                // Get all the group "join requests"
+                options = { projection: { requests: 1, _id: 0 } };
+            }
+            
+            const result = await groupCollection.findOne(query, options);
+            res.send(result);
+        });
+        // accept or reject group join request
+        app.patch('/groups/response/:id',  async (req, res) => {
+            const groupId = req.params.id;
+            const { joinEmail, action } = req.body;
+            
+            const query = { _id: new ObjectId(groupId) }
+
+            let updateRequest;
+            if (action === 'accept') {
+                updateRequest = {
+                    $pull: { requests:  joinEmail  }, // remove email from the "requests array"
+                    $push: {                         // insert email into the "members array"
+                        members: {
+                            joinEmail,
+                            role: "member",
+                            joinDate: new Date().toISOString()
+                        }
+                    }
+                }
+            }else if(action === 'reject') {
+                updateRequest = {
+                    $pull: { requests: joinEmail }, // remove email from the "requests array"
+                }
+            } else {
+                return res.status(404).send({ message: "Action not allowed" });
+            }
+
+            const result = await groupCollection.updateOne(query, updateRequest);
+            res.send(result);
+        });
+        // delete group
+        app.delete('/groups/:id', async (req, res) => {
+            const groupId = req.params.id;
+            const { ownerEmail } = req.query;
+            
+            // Only group owner can delete the group
+            const query = { _id: new ObjectId(groupId) }
+            const group = await groupCollection.findOne(query); 
+            if (group.owner !== ownerEmail) {
+                return res.status(404).send({message: "Only group owner can delete this group"})
+            }
+
+            const result = await groupCollection.deleteOne(query);
             res.send(result);
         });
 
