@@ -59,6 +59,7 @@ async function run() {
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
         const database = client.db("guildDo");
+
         const userCollection = database.collection("users");
         const announcementCollection = database.collection("announcements");
         const postCollection = database.collection("posts");
@@ -66,6 +67,7 @@ async function run() {
         const reportCollection = database.collection("reports");
         const tagCollection = database.collection("tags");
         const paymentCollection = database.collection("payments");
+        const friendCollection = database.collection("friends");
 
         // JWT token
         app.post('/jwt', async (req, res) => {
@@ -83,6 +85,8 @@ async function run() {
             res.clearCookie('token', { maxAge: 0, httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict' }).send({ success: true });
         });
 
+
+
         //  Save User info
         app.post('/users', async (req, res) => {
             const user = req.body;
@@ -95,7 +99,6 @@ async function run() {
             const result = await userCollection.insertOne(user);
             res.send(result);
         });
-
         // get all user and specific user info
         app.get('/users/:currentEmail', verifyToken, async (req, res) => {
             const currentUser = req.params.currentEmail;
@@ -122,14 +125,11 @@ async function run() {
             }
             res.send(result);
         });
-
-
         // user count for pagination
         app.get('/userCounts', verifyToken, async (req, res) => {
             const count = await userCollection.estimatedDocumentCount();
             res.send({ count })
         })
-
         // delete user
         app.delete('/users/:email', async (req, res) => {
             const userEmail = req.params.email;
@@ -137,7 +137,6 @@ async function run() {
             const result = await userCollection.deleteOne(query);
             res.send(result);
         });
-
         // make a user to Admin
         app.patch('/users/admin/:id', verifyToken, async (req, res) => {
             const userId = req.params.id;
@@ -150,7 +149,6 @@ async function run() {
             const result = await userCollection.updateOne(query, updatedDoc);
             res.send(result);
         });
-
         // To check if a user is "admin or not"
         app.get('/users/admin/:email', verifyToken, async (req, res) => {
             const userEmail = req.params.email;
@@ -167,6 +165,7 @@ async function run() {
             res.send({ admin });
         });
 
+
         // Warn user
         app.patch('/users/warn/:email', verifyToken, async (req, res) => {
             const userEmail = req.params.email;
@@ -180,18 +179,19 @@ async function run() {
             res.send(result);
         });
 
+
         // add new announcement
         app.post('/announcements', verifyToken, async (req, res) => {
             const data = req.body;
             const result = await announcementCollection.insertOne(data);
             res.send(result);
         });
-
         // get announcements
         app.get('/announcements', async (req, res) => {
             const result = await announcementCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(result);
         });
+
 
         // add new post
         app.post('/posts', verifyToken, async (req, res) => {
@@ -199,7 +199,6 @@ async function run() {
             const result = await postCollection.insertOne(data);
             res.send(result);
         });
-
         // get all post with pagination and user specific post
         app.get('/posts', async (req, res) => {
             const email = req.query.email;
@@ -245,14 +244,11 @@ async function run() {
 
             res.send(result);
         });
-
-
         // post count for pagination
         app.get('/postsCount', async (req, res) => {
             const count = await postCollection.estimatedDocumentCount();
             res.send({ count })
         })
-
         // specific users post count for pagination
         app.get('/postCounts/:email', verifyToken, async (req, res) => {
             const userEmail = req.params.email;
@@ -260,7 +256,6 @@ async function run() {
             const count = await postCollection.countDocuments(query);
             res.send({ count })
         })
-
         // get single post
         app.get('/posts/:id', async (req, res) => {
             const postId = req.params.id;
@@ -268,108 +263,6 @@ async function run() {
             const result = await postCollection.findOne(query);
             res.send(result);
         });
-
-        // add comment
-        app.post('/comments', verifyToken, async (req, res) => {
-            const data = req.body;
-            const result = await commentCollection.insertOne(data);
-            res.send(result);
-        });
-
-        // get all comments and post specific comments
-        app.get('/comments', async (req, res) => {
-            const id = req.query.id;
-            let query = {};
-            if (id) {
-                query = { postId: id };
-            }
-            const cursor = commentCollection.find(query);
-            const result = await cursor.toArray();
-            res.send(result);
-
-        });
-
-        // delete comment
-        app.delete('/comments/:id', async (req, res) => {
-            const commentId = req.params.id;
-            const query = { _id: new ObjectId(commentId) }
-            const result = await commentCollection.deleteOne(query);
-            res.send(result);
-        });
-
-        // add report
-        app.post('/reports', verifyToken, async (req, res) => {
-            const data = req.body;
-            const result = await reportCollection.insertOne(data);
-            res.send(result);
-        });
-
-        // get all report
-        app.get('/reports', verifyToken, async (req, res) => {
-            let page = parseInt(req.query.page);
-            let size = parseInt(req.query.size);
-
-            page = isNaN(page) ? 0 : page;
-            size = isNaN(size) ? 10 : size;
-
-            const result = await reportCollection.aggregate([
-                {
-                    $addFields: {
-                        commentIdObject: { $toObjectId: "$commentId" }
-                    }
-                },
-                {
-                    $lookup: {
-                        from: 'comments',
-                        localField: 'commentIdObject',
-                        foreignField: '_id',
-                        as: 'comment'
-                    }
-                },
-                {
-                    $unwind: "$comment"
-                },
-                {
-                    $project: {
-                        _id: 1,
-                        report: 1,
-                        commentId: "$comment._id",
-                        comment: "$comment.comment",
-                        commenterEmail: "$comment.email",
-                        postId: "$comment.postId"
-                    }
-                }
-            ]).skip(page * size).limit(size).toArray();
-            res.send(result);
-        });
-
-        // report count for pagination
-        app.get('/reportCounts', verifyToken, async (req, res) => {
-            const count = await reportCollection.estimatedDocumentCount();
-            res.send({ count })
-        })
-
-        // get single report
-        app.get('/report/:id', verifyToken, async (req, res) => {
-            const id = req.params.id;
-            const query = { commentId: id }
-            const result = await reportCollection.findOne(query);
-            if (result) {
-                res.send({ match: true });
-            } else {
-                res.send({ match: false });
-            }
-        });
-
-        // delete report
-        app.delete('/reports/:id', async (req, res) => {
-            const reportId = req.params.id;
-            const query = { _id: new ObjectId(reportId) }
-            const result = await reportCollection.deleteOne(query);
-            res.send(result);
-        });
-
-
         // up-vote and down-vote
         app.patch('/posts/:id', verifyToken, async (req, res) => {
             const postId = req.params.id;
@@ -426,7 +319,6 @@ async function run() {
             const result = await postCollection.updateOne(query, updateState);
             res.send(result);
         });
-
         // delete post
         app.delete('/posts/:id', async (req, res) => {
             const postId = req.params.id;
@@ -435,6 +327,123 @@ async function run() {
             res.send(result);
         });
 
+
+        // add comment
+        app.post('/comments', verifyToken, async (req, res) => {
+            const data = req.body;
+            const result = await commentCollection.insertOne(data);
+            res.send(result);
+        });
+        // get all comments and post specific comments
+        app.get('/comments', async (req, res) => {
+            const id = req.query.id;
+            let query = {};
+            if (id) {
+                query = { postId: id };
+            }
+            const cursor = commentCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+        // get comments of current user
+        app.get('/comments/:email', async (req, res) => {
+            const commentUser = req.params.email;
+            const cursor = commentCollection.find(commentUser);
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+        // delete comment
+        app.delete('/comments/:id', async (req, res) => {
+            const commentId = req.params.id;
+            const query = { _id: new ObjectId(commentId) }
+            const result = await commentCollection.deleteOne(query);
+            res.send(result);
+        });
+
+
+        // add report
+        app.post('/reports', verifyToken, async (req, res) => {
+            const data = req.body;
+            const result = await reportCollection.insertOne(data);
+            res.send(result);
+        });
+        // get all report
+        app.get('/reports', verifyToken, async (req, res) => {
+            let page = parseInt(req.query.page);
+            let size = parseInt(req.query.size);
+
+            page = isNaN(page) ? 0 : page;
+            size = isNaN(size) ? 10 : size;
+
+            const result = await reportCollection.aggregate([
+                {
+                    $addFields: {
+                        commentIdObject: { $toObjectId: "$commentId" }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'comments',
+                        localField: 'commentIdObject',
+                        foreignField: '_id',
+                        as: 'comment'
+                    }
+                },
+                {
+                    $unwind: "$comment"
+                },
+                {
+                    $project: {
+                        _id: 1,
+                        report: 1,
+                        commentId: "$comment._id",
+                        comment: "$comment.comment",
+                        commenterEmail: "$comment.email",
+                        postId: "$comment.postId"
+                    }
+                }
+            ]).skip(page * size).limit(size).toArray();
+            res.send(result);
+        });
+        // report count for pagination
+        app.get('/reportCounts', verifyToken, async (req, res) => {
+            const count = await reportCollection.estimatedDocumentCount();
+            res.send({ count })
+        })
+        // get single report
+        app.get('/report/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const query = { commentId: id }
+            const result = await reportCollection.findOne(query);
+            if (result) {
+                res.send({ match: true });
+            } else {
+                res.send({ match: false });
+            }
+        });
+        // delete report
+        app.delete('/reports/:id', async (req, res) => {
+            const reportId = req.params.id;
+            const query = { _id: new ObjectId(reportId) }
+            const result = await reportCollection.deleteOne(query);
+            res.send(result);
+        });
+
+
+        // add new tag
+        app.post('/tags', verifyToken, async (req, res) => {
+            const data = req.body;
+            const result = await tagCollection.insertOne(data);
+            res.send(result);
+        });
+        // get all tags
+        app.get('/tags', async (req, res) => {
+            const cursor = tagCollection.find();
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+
+
         // get document count
         app.get('/document-count', verifyToken, async (req, res) => {
             const posts = await postCollection.estimatedDocumentCount();
@@ -442,6 +451,7 @@ async function run() {
             const users = await userCollection.estimatedDocumentCount();
             res.send({ posts, comments, users });
         });
+
 
         // stripe payments
         app.post("/create-payment-intent", async (req, res) => {
@@ -459,21 +469,6 @@ async function run() {
                 clientSecret: paymentIntent.client_secret,
             });
         });
-
-        // add new tag
-        app.post('/tags', verifyToken, async (req, res) => {
-            const data = req.body;
-            const result = await tagCollection.insertOne(data);
-            res.send(result);
-        });
-
-        // get all tags
-        app.get('/tags', async (req, res) => {
-            const cursor = tagCollection.find();
-            const result = await cursor.toArray();
-            res.send(result);
-        });
-
         // save payment data
         app.post('/payments', verifyToken, async (req, res) => {
             const data = req.body;
@@ -488,8 +483,6 @@ async function run() {
             const result = await paymentCollection.insertOne(data);
             res.send(result);
         });
-
-
         // get all payment data and specific user payment data 
         app.get('/payments', verifyToken, async (req, res) => {
             const userEmail = req.query.email;
@@ -501,6 +494,82 @@ async function run() {
             }
             res.send(result);
         });
+
+        
+        // Save friend requests
+        app.post('/friend-requests', async (req, res) => {
+            const request = req.body;
+            const existingRequest = await friendCollection.findOne({
+                $or: [
+                    { fromUser: request.fromUser, toUser: request.toUser },
+                    { fromUser: request.toUser, toUser: request.fromUser }
+                ]
+            });
+            if (existingRequest) {
+                return res.send({ message: 'friend request already sent', insertedId: null })
+            }
+            const result = await friendCollection.insertOne(request);
+            res.send(result);
+        });
+        // get all friend requests and specific user friend requests
+        app.get('/friend-requests', async (req, res) => {
+            const userEmail = req.query.email;
+            let result;
+            if (userEmail) {
+                result = await friendCollection
+                        .find({ toUser: userEmail }) 
+                        .toArray();   
+                // result = await friendCollection
+                //         .find({$or: [
+                //                 { fromUser: userEmail },
+                //                 { toUser: userEmail }
+                //             ]}) 
+                //         .toArray();   
+            } else {
+                result = await friendCollection.find().toArray();
+            }
+            res.send(result);
+        });
+        // accept or reject friend requests 
+        app.patch('/friend-requests/:id',  async (req, res) => {
+            const friendRequestId = req.params.id;
+            const friendRequestResponse = req.body.requestResponse;
+            console.log(friendRequestResponse);
+            const query = { _id: new ObjectId(friendRequestId) }
+            const updatedRequestStatus = {
+                $set: {
+                    status: friendRequestResponse
+                }
+            };
+            const result = await friendCollection.updateOne(query, updatedRequestStatus);
+            res.send(result);
+        });
+        // get my friends
+        app.get('/my-friends/:email', async (req, res) => {
+            const userEmail = req.params.email;
+            const result  = await friendCollection
+                            .find({
+                                $and: [
+                                        { status: "accept" },
+                                        {
+                                            $or: [
+                                                { fromUser: userEmail },
+                                                { toUser: userEmail }
+                                            ]   
+                                        }
+                                    ]
+                            }) 
+                            .toArray();
+            res.send(result);
+        });
+        // delete friend request
+        app.delete('/friend-requests/:id', async (req, res) => {
+            const friendRequestId = req.params.id;
+            const query = { _id: new ObjectId(friendRequestId) }
+            const result = await friendCollection.deleteOne(query);
+            res.send(result);
+        });
+
 
     } finally {
         // Ensures that the client will close when you finish/error
@@ -514,5 +583,5 @@ app.get('/', (req, res) => {
     res.send('GuildDo server running!');
 });
 app.listen(port, () => {
-    console.log(`Server Running on port ${port}`)
+    console.log(`GuildDo Server Running on port ${port}`)
 });
