@@ -87,7 +87,6 @@ async function run() {
         });
 
 
-
         //  Save User info
         app.post('/users', async (req, res) => {
             const user = req.body;
@@ -187,9 +186,15 @@ async function run() {
             const result = await announcementCollection.insertOne(data);
             res.send(result);
         });
-        // get announcements
+        // get all announcements
         app.get('/announcements', async (req, res) => {
-            const result = await announcementCollection.find().sort({ createdAt: -1 }).toArray();
+            const { postLimit } = req.query;
+
+            let cursor = announcementCollection.find().sort({ createdAt: -1 });
+            if (postLimit) {
+                cursor = cursor.limit(parseInt(postLimit));
+            }
+            const result = await cursor.toArray();
             res.send(result);
         });
 
