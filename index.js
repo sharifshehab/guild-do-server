@@ -521,15 +521,35 @@ async function run() {
         app.get('/friend-requests', async (req, res) => {
             const receivedRequests = req.query.receivedRequests;
             const sendRequests = req.query.sendRequests;
+
             let result;
+
             if (receivedRequests) {
                 result = await friendCollection
-                        .find({ toUser: receivedRequests }) 
-                        .toArray();   
-            } else {
+                    .find({
+                        $and: [
+                            { toUser: receivedRequests },
+                            { status: "pending" }
+                        ]
+                    }) 
+                    .toArray();   
+            } else if(sendRequests) {
                 result = await friendCollection
-                        .find({ fromUser: sendRequests }) 
-                        .toArray();   
+                    .find({
+                        $and: [
+                            { fromUser: sendRequests },
+                            {
+                                $or: [
+                                    { status: "pending" },
+                                    { status: "reject" }
+                                ]   
+                            }
+                        ]
+                    }) 
+                    .toArray();   
+            }
+            else {
+                result = await friendCollection.find().toArray(); 
             }
             res.send(result);
         });
@@ -565,12 +585,20 @@ async function run() {
             res.send(result);
         });
         // delete friend request
-        // app.delete('/friend-requests/:id', async (req, res) => {
-        //     const friendRequestId = req.params.id;
-        //     const query = { _id: new ObjectId(friendRequestId) }
-        //     const result = await friendCollection.deleteOne(query);
-        //     res.send(result);
-        // });
+        app.delete('/friend-requests/:id', async (req, res) => {
+            const requestId = req.params.id;
+            const requestedUserEmail = req.query.email;
+
+            const query = { _id: new ObjectId(requestId) }
+            const friendRequest = await friendCollection.findOne(query); 
+            if (friendRequest?.fromUser !== requestedUserEmail) {
+                return res.status(403).send({message: "Only the friend request sender can delete this request!"})
+            }
+
+            const result = await friendCollection.deleteOne(query);
+            res.send(result);
+        });
+        // const res = await axiosPublic.delete(`/friend-requests/${_id}`);
 
 
         // Create new group
@@ -583,7 +611,8 @@ async function run() {
             
             // Insert group creator data into the document by default
             const groupCreator = {
-                email: group.owner,
+                name: group.ownerName,
+                email: group.ownerEmail,
                 role: "admin",
                 joinedAt: group.createdAt
             };
@@ -598,7 +627,7 @@ async function run() {
             let result;
             if (groupOwner) {
                 result = await groupCollection
-                        .find({ owner: groupOwner }) 
+                        .find({ ownerEmail: groupOwner }) 
                         .toArray();   
             } else {
                 result = await groupCollection
@@ -611,23 +640,29 @@ async function run() {
         // send group join request
         app.patch('/groups/:id',  async (req, res) => {
             const groupId = req.params.id;
-            const joinRequest = req.body.email;
+            const {name, email:userEmail} = req.body;
             const query = { _id: new ObjectId(groupId) }
 
             const group = await groupCollection.findOne(query); 
             if (!group) {
                 return res.status(404).send({message: "Group not found!"})
             }
-            const alreadyRequested = group.requests?.some(request => request.email === joinRequest); 
-            const alreadyMember = group.members?.some(member => member.email === joinRequest); 
+            const alreadyRequested = group.requests?.some(request => request.email === userEmail); 
+            const alreadyMember = group.members?.some(member => member.email === userEmail); 
             if (alreadyRequested) {
-                return res.status(404).send({ message: "Join request already sent" });
+                return res.send({ message: "Join request already sent" });
             }
             if (alreadyMember) {
-                return res.status(404).send({ message: "You are already a member" });
+                return res.send({ message: "You are already a member" });
             }
 
-            // Puss "join Request Email" in to the group "requests array"
+            const joinRequest = {
+                name:name,
+                email: userEmail,
+                date: new Date().toISOString(),
+            }
+
+            // push "join Request user data" in to the group "requests array"
             const updatedRequest = {
                 $push: {
                     requests: joinRequest
@@ -636,38 +671,22 @@ async function run() {
             const result = await groupCollection.updateOne(query, updatedRequest);
             res.send(result);
         });
-        // get all the join "requests" and the "members" of a group
-        app.get('/groups/request/:id', async (req, res) => {
-            const groupId = req.params.id;
-            const members = req.query.members;
 
-            const query = { _id: new ObjectId(groupId) };
-            let options
-            if (members) {
-                // Get all the group members
-                options = { projection: {members: 1 , _id:0} };
-            } else {
-                // Get all the group "join requests"
-                options = { projection: { requests: 1, _id: 0 } };
-            }
-            
-            const result = await groupCollection.findOne(query, options);
-            res.send(result);
-        });
         // accept or reject group join request
         app.patch('/groups/response/:id',  async (req, res) => {
             const groupId = req.params.id;
-            const { joinEmail, action } = req.body;
+            const { name, email, action } = req.body;
             
             const query = { _id: new ObjectId(groupId) }
 
             let updateRequest;
             if (action === 'accept') {
                 updateRequest = {
-                    $pull: { requests:  joinEmail  }, // remove email from the "requests array"
-                    $push: {                         // insert email into the "members array"
+                    $pull: { requests:  {email: email}  }, // remove the request from the "requests array"
+                    $push: {                         // insert requested user into the "members array"
                         members: {
-                            joinEmail,
+                            name:name,
+                            email:email,
                             role: "member",
                             joinDate: new Date().toISOString()
                         }
@@ -675,7 +694,7 @@ async function run() {
                 }
             }else if(action === 'reject') {
                 updateRequest = {
-                    $pull: { requests: joinEmail }, // remove email from the "requests array"
+                    $pull: { requests: {email: email} }, // remove the request from the "requests array"
                 }
             } else {
                 return res.status(404).send({ message: "Action not allowed" });
